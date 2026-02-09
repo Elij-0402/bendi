@@ -1,0 +1,98 @@
+import { useEffect, useState, useCallback } from 'react'
+import { Outlet, useParams, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Settings, PanelRight } from 'lucide-react'
+import { Button } from '../ui/button'
+import { StatusBar } from './StatusBar'
+import { ChapterList } from '../../features/editor/ChapterList'
+import { AIChatPanel } from '../../features/ai/AIChatPanel'
+import { useProjectStore } from '../../stores/project-store'
+import { useAIStore } from '../../stores/ai-store'
+
+export function AppLayout(): React.ReactElement {
+  const { projectId } = useParams<{ projectId: string }>()
+  const navigate = useNavigate()
+  const [showAIPanel, setShowAIPanel] = useState(false)
+
+  const currentProject = useProjectStore((s) => s.currentProject)
+  const setCurrentProject = useProjectStore((s) => s.setCurrentProject)
+  const loadChapters = useProjectStore((s) => s.loadChapters)
+  const loadProviders = useAIStore((s) => s.loadProviders)
+
+  const loadProject = useCallback(async () => {
+    if (!projectId) return
+    const id = parseInt(projectId, 10)
+    if (isNaN(id)) return
+    try {
+      const project = await window.api.project.get(id)
+      if (project) {
+        setCurrentProject(project)
+        await loadChapters(id)
+      }
+    } catch (error) {
+      console.error('Failed to load project:', error)
+    }
+  }, [projectId, setCurrentProject, loadChapters])
+
+  useEffect(() => {
+    loadProject()
+    loadProviders()
+
+    return () => {
+      // Clean up on unmount
+      useProjectStore.getState().setCurrentProject(null)
+      useProjectStore.getState().setCurrentChapter(null)
+    }
+  }, [loadProject, loadProviders])
+
+  return (
+    <div className="flex flex-col h-screen bg-background">
+      {/* Top toolbar */}
+      <div className="flex h-12 items-center justify-between border-b px-4 shrink-0 bg-background">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-sm font-semibold truncate max-w-[200px]">
+            {currentProject?.title ?? '加载中...'}
+          </h1>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant={showAIPanel ? 'secondary' : 'ghost'}
+            size="icon"
+            onClick={() => setShowAIPanel(!showAIPanel)}
+            title="AI 面板"
+          >
+            <PanelRight className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Main content area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar - Chapter list */}
+        <div className="w-60 border-r bg-sidebar-background flex flex-col shrink-0">
+          <ChapterList />
+        </div>
+
+        {/* Center - Editor area */}
+        <div className="flex-1 overflow-hidden">
+          <Outlet />
+        </div>
+
+        {/* Right panel - AI Chat */}
+        {showAIPanel && (
+          <div className="w-[360px] border-l bg-background flex flex-col shrink-0">
+            <AIChatPanel />
+          </div>
+        )}
+      </div>
+
+      {/* Bottom status bar */}
+      <StatusBar />
+    </div>
+  )
+}
