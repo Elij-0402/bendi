@@ -20,8 +20,68 @@ export function AIChatPanel(): React.ReactElement {
   const sendMessage = useAIStore((s) => s.sendMessage)
   const cancelStream = useAIStore((s) => s.cancelStream)
   const clearMessages = useAIStore((s) => s.clearMessages)
+  const loadConversation = useAIStore((s) => s.loadConversation)
 
   const currentChapter = useProjectStore((s) => s.currentChapter)
+  const currentProject = useProjectStore((s) => s.currentProject)
+  const updateChapter = useProjectStore((s) => s.updateChapter)
+
+  useEffect(() => {
+    if (!currentProject?.id) return
+    loadConversation(currentProject.id, currentChapter?.id)
+  }, [currentProject?.id, currentChapter?.id, loadConversation])
+
+  const markdownToHtml = useCallback((text: string): string => {
+    const escapeHtml = (value: string): string =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+
+    const formatInline = (value: string): string =>
+      value
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+
+    const lines = escapeHtml(text).split('\n')
+    return lines
+      .map((line) => {
+        if (line.startsWith('### ')) return `<h3>${formatInline(line.slice(4))}</h3>`
+        if (line.startsWith('## ')) return `<h2>${formatInline(line.slice(3))}</h2>`
+        if (line.startsWith('# ')) return `<h1>${formatInline(line.slice(2))}</h1>`
+        if (line.startsWith('> ')) return `<blockquote>${formatInline(line.slice(2))}</blockquote>`
+        return formatInline(line)
+      })
+      .join('<br/>')
+  }, [])
+
+  const insertAssistantMessage = useCallback(
+    async (content: string) => {
+      if (!currentChapter) return
+      let parsed: Record<string, unknown>
+      try {
+        parsed = currentChapter.content ? JSON.parse(currentChapter.content) : { type: 'doc', content: [] }
+      } catch {
+        parsed = { type: 'doc', content: [] }
+      }
+
+      const doc = parsed as { type?: string; content?: Array<Record<string, unknown>> }
+      const existingContent = Array.isArray(doc.content) ? doc.content : []
+      const appendNodes = content
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .map((line) => ({ type: 'paragraph', content: [{ type: 'text', text: line }] }))
+
+      const nextDoc = {
+        type: 'doc',
+        content: [...existingContent, ...appendNodes]
+      }
+
+      await updateChapter({ id: currentChapter.id, content: JSON.stringify(nextDoc) })
+    },
+    [currentChapter, updateChapter]
+  )
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -33,17 +93,26 @@ export function AIChatPanel(): React.ReactElement {
     if (!text || isStreaming) return
     setInputText('')
 
-    const context = currentChapter?.content
-      ? { chapterContent: currentChapter.content }
-      : undefined
+    const currentProject = useProjectStore.getState().currentProject
+    const context: Record<string, unknown> = {}
+    if (currentChapter?.content) {
+      context.chapterContent = currentChapter.content
+    }
+    if (currentProject?.id) {
+      context.projectId = currentProject.id
+    }
+    if (currentChapter?.id) {
+      context.chapterId = currentChapter.id
+    }
 
-    await sendMessage('chat', text, context)
+    await sendMessage('chat', text, Object.keys(context).length > 0 ? context : undefined)
   }, [inputText, isStreaming, currentChapter, sendMessage])
 
   const handleQuickAction = useCallback(
     async (action: AIAction) => {
       if (isStreaming || !currentChapter?.content) return
 
+      const currentProject = useProjectStore.getState().currentProject
       const actionLabels: Record<AIAction, string> = {
         continue: '请续写以下内容',
         polish: '请润色以下内容',
@@ -52,7 +121,15 @@ export function AIChatPanel(): React.ReactElement {
       }
 
       const text = actionLabels[action]
-      const context = { chapterContent: currentChapter.content }
+      const context: Record<string, unknown> = {
+        chapterContent: currentChapter.content
+      }
+      if (currentProject?.id) {
+        context.projectId = currentProject.id
+      }
+      if (currentChapter?.id) {
+        context.chapterId = currentChapter.id
+      }
 
       await sendMessage(action, text, context)
     },
@@ -90,7 +167,9 @@ export function AIChatPanel(): React.ReactElement {
             variant="ghost"
             size="sm"
             className="h-7 text-xs"
-            onClick={clearMessages}
+            onClick={() => {
+              void clearMessages(currentProject?.id, currentChapter?.id)
+            }}
           >
             清空
           </Button>
@@ -118,7 +197,26 @@ export function AIChatPanel(): React.ReactElement {
                   : 'bg-muted text-foreground'
               }`}
             >
-              <span className="whitespace-pre-wrap">{msg.content}</span>
+              {msg.role === 'assistant' ? (
+                <div>
+                  <div
+                    className="whitespace-pre-wrap prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: markdownToHtml(msg.content) }}
+                  />
+                  <div className="mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => void insertAssistantMessage(msg.content)}
+                    >
+                      插入编辑器
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <span className="whitespace-pre-wrap">{msg.content}</span>
+              )}
             </div>
           </div>
         ))}

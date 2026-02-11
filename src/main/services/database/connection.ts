@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { up as migration001 } from './migrations/001_initial'
+import { up as migration002 } from './migrations/002_features_upgrade'
 
 let db: SqlJsDatabase | null = null
 let dbPath: string = ''
@@ -37,6 +38,7 @@ export async function initDatabase(): Promise<void> {
 
   // Run migrations
   migration001(db)
+  migration002(db)
 
   // Save after initial migration
   saveDatabase()

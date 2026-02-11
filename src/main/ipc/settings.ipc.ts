@@ -194,7 +194,7 @@ export function registerSettingsIPC(): void {
 
     let apiKey: string
     try {
-      apiKey = decryptKey(row.api_key_encrypted)
+      apiKey = row.api_key_encrypted ? decryptKey(row.api_key_encrypted) : ''
     } catch {
       return { success: false, message: 'Failed to decrypt API key' }
     }

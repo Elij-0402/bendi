@@ -11,15 +11,27 @@ import {
   Heading1,
   Heading2,
   Quote,
-  Minus
+  Minus,
+  Pen
 } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { ScrollArea } from '../../components/ui/scroll-area'
 import { useProjectStore } from '../../stores/project-store'
+import { useInlineAIStore } from '../../stores/inline-ai-store'
+import { AISuggestion } from './extensions/ai-suggestion'
+import { InlineSuggestionToolbar } from './InlineSuggestionToolbar'
+import { GenerationControlsPopover } from './GenerationControlsPopover'
 
 export function NovelEditor(): React.ReactElement {
   const currentChapter = useProjectStore((s) => s.currentChapter)
+  const currentProject = useProjectStore((s) => s.currentProject)
   const updateChapter = useProjectStore((s) => s.updateChapter)
+  const inlineStatus = useInlineAIStore((s) => s.status)
+  const inlineText = useInlineAIStore((s) => s.currentText)
+  const inlineIsStreaming = useInlineAIStore((s) => s.isStreaming)
+  const startContinuation = useInlineAIStore((s) => s.startContinuation)
+  const cancelContinuation = useInlineAIStore((s) => s.cancelContinuation)
+  const inlineReset = useInlineAIStore((s) => s.reset)
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chapterIdRef = useRef<number | null>(null)
@@ -35,7 +47,8 @@ export function NovelEditor(): React.ReactElement {
         placeholder: '开始书写你的故事...'
       }),
       CharacterCount,
-      Underline
+      Underline,
+      AISuggestion
     ],
     content: '',
     editorProps: {
@@ -129,6 +142,99 @@ export function NovelEditor(): React.ReactElement {
     editor?.chain().focus().setHorizontalRule().run()
   }, [editor])
 
+  // Trigger inline continuation
+  const triggerInlineContinuation = useCallback(() => {
+    if (!editor || inlineIsStreaming) return
+
+    const { from } = editor.state.selection
+    const textBeforeCursor = editor.state.doc.textBetween(0, from, '\n')
+    if (!textBeforeCursor.trim()) return
+
+    editor.commands.startAISuggestion(from)
+
+    startContinuation({
+      textBeforeCursor,
+      cursorPos: from,
+      chapterContent: currentChapter?.content,
+      projectId: currentProject?.id,
+      chapterId: currentChapter?.id
+    })
+  }, [editor, inlineIsStreaming, startContinuation, currentChapter, currentProject])
+
+  // Sync inline store text to editor suggestion decoration
+  const prevInlineTextRef = useRef('')
+  useEffect(() => {
+    if (!editor) return
+
+    if (inlineStatus === 'idle') {
+      prevInlineTextRef.current = ''
+      return
+    }
+
+    if (inlineText !== prevInlineTextRef.current) {
+      if (inlineIsStreaming) {
+        editor.commands.setAISuggestion(inlineText)
+      } else {
+        editor.commands.setAISuggestion(inlineText)
+        if (inlineStatus === 'completed') {
+          editor.commands.completeAISuggestion()
+        }
+      }
+      prevInlineTextRef.current = inlineText
+    }
+  }, [editor, inlineText, inlineIsStreaming, inlineStatus])
+
+  // Clean up inline state on chapter switch
+  useEffect(() => {
+    return () => {
+      inlineReset()
+    }
+  }, [currentChapter?.id, inlineReset])
+
+  // Handle accept/reject from toolbar
+  const handleAcceptSuggestion = useCallback(() => {
+    if (!editor) return
+    editor.commands.acceptAISuggestion()
+    useInlineAIStore.getState().acceptSuggestion()
+  }, [editor])
+
+  const handleRejectSuggestion = useCallback(() => {
+    if (!editor) return
+    editor.commands.rejectAISuggestion()
+    useInlineAIStore.getState().rejectSuggestion()
+  }, [editor])
+
+  const handleRegenerate = useCallback(() => {
+    if (!editor) return
+    const { from } = editor.state.selection
+    const textBeforeCursor = editor.state.doc.textBetween(0, from, '\n')
+
+    editor.commands.rejectAISuggestion()
+
+    const store = useInlineAIStore.getState()
+    editor.commands.startAISuggestion(from)
+
+    store.regenerate({
+      textBeforeCursor,
+      cursorPos: from,
+      chapterContent: currentChapter?.content,
+      projectId: currentProject?.id,
+      chapterId: currentChapter?.id
+    })
+  }, [editor, currentChapter, currentProject])
+
+  // Ctrl+J shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.ctrlKey && e.key === 'j') {
+        e.preventDefault()
+        triggerInlineContinuation()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [triggerInlineContinuation])
+
   if (!editor) {
     return <div className="flex items-center justify-center h-full text-muted-foreground">加载编辑器...</div>
   }
@@ -206,7 +312,32 @@ export function NovelEditor(): React.ReactElement {
         >
           <Minus className="h-4 w-4" />
         </Button>
+
+        <div className="w-px h-5 bg-border mx-1" />
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 text-xs px-2"
+          onClick={triggerInlineContinuation}
+          disabled={inlineIsStreaming || !currentChapter?.content}
+          title="内联续写 (Ctrl+J)"
+        >
+          <Pen className="h-3.5 w-3.5 mr-1" />
+          续写
+        </Button>
+
+        <div className="relative">
+          <GenerationControlsPopover />
+        </div>
       </div>
+
+      {/* Inline suggestion toolbar */}
+      <InlineSuggestionToolbar
+        onAccept={handleAcceptSuggestion}
+        onReject={handleRejectSuggestion}
+        onRegenerate={handleRegenerate}
+      />
 
       {/* Editor content */}
       <ScrollArea className="flex-1">

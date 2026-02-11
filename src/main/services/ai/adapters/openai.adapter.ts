@@ -9,7 +9,7 @@ export class OpenAIAdapter implements AIAdapter {
     try {
       const client = new OpenAI({
         baseURL: config.baseUrl,
-        apiKey: config.apiKey
+        apiKey: config.apiKey || 'ollama'
       })
 
       const stream = await client.chat.completions.create({
@@ -18,7 +18,8 @@ export class OpenAIAdapter implements AIAdapter {
           role: m.role,
           content: m.content
         })),
-        stream: true
+        stream: true,
+        ...(config.temperature !== undefined ? { temperature: config.temperature } : {})
       })
 
       for await (const chunk of stream) {

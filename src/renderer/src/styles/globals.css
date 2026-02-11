@@ -113,6 +113,9 @@ body {
   outline: none;
   min-height: 100%;
   padding: 2rem;
+  max-width: 48rem;
+  margin: 0 auto;
+  width: 100%;
   font-size: 1rem;
   line-height: 1.8;
 }
@@ -197,4 +200,117 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   opacity: 0.5;
+}
+
+/* Side panel transitions */
+.side-panel-enter {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+.side-panel-exit {
+  animation: slide-out-right 0.15s ease-in;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+}
+
+/* Panel tab active indicator */
+.panel-tab-active {
+  position: relative;
+}
+
+.panel-tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 25%;
+  right: 25%;
+  height: 2px;
+  background-color: var(--color-primary);
+  border-radius: 1px;
+}
+
+/* Streaming text pulse */
+.streaming-pulse {
+  animation: streaming-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes streaming-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* AI suggestion ghost text */
+.ai-suggestion {
+  color: var(--color-muted-foreground);
+  opacity: 0.5;
+  font-style: italic;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ai-suggestion-streaming {
+  opacity: 0.4;
+}
+
+.ai-suggestion-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background-color: var(--color-primary);
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: ai-cursor-blink 0.8s ease-in-out infinite;
+}
+
+@keyframes ai-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Idea card hover effect */
+.idea-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.idea-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.dark .idea-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Generation progress bar */
+.generation-progress {
+  transition: width 0.3s ease;
+}
+
+/* Outline tree node drag styles */
+.outline-node-dragging {
+  opacity: 0.5;
+}
+
+.outline-node-drop-target {
+  border-left: 2px solid var(--color-primary);
 }

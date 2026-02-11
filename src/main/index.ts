@@ -4,8 +4,15 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDatabase, saveDatabaseSync } from './services/database/connection'
 import { registerProjectIPC } from './ipc/project.ipc'
 import { registerChapterIPC } from './ipc/chapter.ipc'
+import { registerCharacterIPC } from './ipc/character.ipc'
+import { registerWorldSettingIPC } from './ipc/world-setting.ipc'
 import { registerAIIPC } from './ipc/ai.ipc'
 import { registerSettingsIPC } from './ipc/settings.ipc'
+import { registerOutlineIPC } from './ipc/outline.ipc'
+import { registerStoryNoteIPC } from './ipc/story-note.ipc'
+import { registerWritingStyleIPC } from './ipc/writing-style.ipc'
+import { registerGenerationHistoryIPC } from './ipc/generation-history.ipc'
+import { registerExportIPC } from './ipc/export.ipc'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -52,8 +59,15 @@ app.whenReady().then(async () => {
   // Register IPC handlers
   registerProjectIPC()
   registerChapterIPC()
+  registerCharacterIPC()
+  registerWorldSettingIPC()
   registerAIIPC()
   registerSettingsIPC()
+  registerOutlineIPC()
+  registerStoryNoteIPC()
+  registerWritingStyleIPC()
+  registerGenerationHistoryIPC()
+  registerExportIPC()
 
   createWindow()
 

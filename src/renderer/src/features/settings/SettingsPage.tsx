@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, Zap } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Zap, Save } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
@@ -14,7 +14,7 @@ import {
   DialogFooter
 } from '../../components/ui/dialog'
 import { useAIStore } from '../../stores/ai-store'
-import type { AIProviderType, CreateAIProviderInput } from '../../../../shared/types'
+import type { AIProviderType, CreateAIProviderInput, ExportFormat } from '../../../../shared/types'
 
 // Provider presets
 const PROVIDER_PRESETS: Array<{
@@ -51,6 +51,13 @@ const PROVIDER_PRESETS: Array<{
     type: 'anthropic',
     baseUrl: 'https://api.anthropic.com',
     model: 'claude-sonnet-4-20250514'
+  },
+  {
+    label: 'Ollama (本地)',
+    name: 'Ollama',
+    type: 'openai',
+    baseUrl: 'http://127.0.0.1:11434/v1',
+    model: 'qwen2.5:7b'
   }
 ]
 
@@ -83,8 +90,35 @@ export function SettingsPage(): React.ReactElement {
   const [testResults, setTestResults] = useState<Record<number, { success: boolean; message: string }>>({})
   const [testingIds, setTestingIds] = useState<Set<number>>(new Set())
 
+  // Export defaults
+  const [defaultExportFormat, setDefaultExportFormat] = useState<ExportFormat>('txt')
+  const [defaultIncludeTitle, setDefaultIncludeTitle] = useState(true)
+  const [defaultSeparator, setDefaultSeparator] = useState('---')
+
+  // AI defaults
+  const [defaultTemperature, setDefaultTemperature] = useState(0.7)
+  const [defaultTargetLength, setDefaultTargetLength] = useState<'short' | 'medium' | 'long'>('medium')
+  const [settingsSaved, setSettingsSaved] = useState(false)
+
   useEffect(() => {
     loadProviders()
+    // Load saved settings
+    void (async () => {
+      try {
+        const exportFmt = await window.api.settings.get('export.defaultFormat')
+        if (exportFmt) setDefaultExportFormat(exportFmt as ExportFormat)
+        const inclTitle = await window.api.settings.get('export.includeTitle')
+        if (inclTitle !== null && inclTitle !== undefined) setDefaultIncludeTitle(inclTitle as boolean)
+        const sep = await window.api.settings.get('export.separator')
+        if (sep) setDefaultSeparator(sep as string)
+        const temp = await window.api.settings.get('ai.defaultTemperature')
+        if (temp !== null && temp !== undefined) setDefaultTemperature(temp as number)
+        const len = await window.api.settings.get('ai.defaultTargetLength')
+        if (len) setDefaultTargetLength(len as 'short' | 'medium' | 'long')
+      } catch (error) {
+        console.error('Failed to load settings:', error)
+      }
+    })()
   }, [loadProviders])
 
   const updateForm = useCallback(
@@ -107,7 +141,13 @@ export function SettingsPage(): React.ReactElement {
   }, [])
 
   const handleAddProvider = useCallback(async () => {
-    if (!form.name.trim() || !form.baseUrl.trim() || !form.apiKey.trim() || !form.model.trim()) {
+    const requiresApiKey = !(form.type === 'openai' && /^https?:\/\/(127\.0\.0\.1|localhost)/.test(form.baseUrl.trim()))
+    if (
+      !form.name.trim() ||
+      !form.baseUrl.trim() ||
+      !form.model.trim() ||
+      (requiresApiKey && !form.apiKey.trim())
+    ) {
       return
     }
 
@@ -163,6 +203,20 @@ export function SettingsPage(): React.ReactElement {
       })
     }
   }, [])
+
+  const handleSaveDefaults = useCallback(async () => {
+    try {
+      await window.api.settings.set('export.defaultFormat', defaultExportFormat)
+      await window.api.settings.set('export.includeTitle', defaultIncludeTitle)
+      await window.api.settings.set('export.separator', defaultSeparator)
+      await window.api.settings.set('ai.defaultTemperature', defaultTemperature)
+      await window.api.settings.set('ai.defaultTargetLength', defaultTargetLength)
+      setSettingsSaved(true)
+      setTimeout(() => setSettingsSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to save settings:', error)
+    }
+  }, [defaultExportFormat, defaultIncludeTitle, defaultSeparator, defaultTemperature, defaultTargetLength])
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -257,6 +311,111 @@ export function SettingsPage(): React.ReactElement {
               </div>
             )}
           </section>
+
+          {/* Export Defaults */}
+          <section className="mt-8">
+            <div className="mb-4">
+              <h2 className="text-base font-semibold">导出默认设置</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                配置导出功能的默认参数
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">默认格式</label>
+                <div className="flex gap-2">
+                  <Button
+                    variant={defaultExportFormat === 'txt' ? 'secondary' : 'outline'}
+                    size="sm"
+                    onClick={() => setDefaultExportFormat('txt')}
+                  >
+                    纯文本
+                  </Button>
+                  <Button
+                    variant={defaultExportFormat === 'markdown' ? 'secondary' : 'outline'}
+                    size="sm"
+                    onClick={() => setDefaultExportFormat('markdown')}
+                  >
+                    Markdown
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="defaultIncludeTitle"
+                  checked={defaultIncludeTitle}
+                  onChange={(e) => setDefaultIncludeTitle(e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                <label htmlFor="defaultIncludeTitle" className="text-sm">
+                  默认包含章节标题
+                </label>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">章节分隔符</label>
+                <Input
+                  value={defaultSeparator}
+                  onChange={(e) => setDefaultSeparator(e.target.value)}
+                  placeholder="---"
+                  className="max-w-xs"
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* AI Generation Defaults */}
+          <section className="mt-8">
+            <div className="mb-4">
+              <h2 className="text-base font-semibold">AI 生成默认参数</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                配置 AI 生成功能的默认参数
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium flex items-center justify-between">
+                  <span>默认创造性 (Temperature)</span>
+                  <span className="text-muted-foreground">{defaultTemperature.toFixed(1)}</span>
+                </label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.5"
+                  step="0.1"
+                  value={defaultTemperature}
+                  onChange={(e) => setDefaultTemperature(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer max-w-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  较低值产生更稳定的输出，较高值产生更有创意的输出
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">默认目标长度</label>
+                <div className="flex gap-2">
+                  {([['short', '短'], ['medium', '中'], ['long', '长']] as const).map(([val, label]) => (
+                    <Button
+                      key={val}
+                      variant={defaultTargetLength === val ? 'secondary' : 'outline'}
+                      size="sm"
+                      onClick={() => setDefaultTargetLength(val)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Save button */}
+          <div className="mt-8 mb-8">
+            <Button onClick={() => void handleSaveDefaults()}>
+              <Save className="h-4 w-4 mr-2" />
+              {settingsSaved ? '已保存' : '保存设置'}
+            </Button>
+          </div>
         </div>
       </ScrollArea>
 
@@ -366,7 +525,9 @@ export function SettingsPage(): React.ReactElement {
               disabled={
                 !form.name.trim() ||
                 !form.baseUrl.trim() ||
-                !form.apiKey.trim() ||
+                (!(form.type === 'openai' &&
+                  /^https?:\/\/(127\.0\.0\.1|localhost)/.test(form.baseUrl.trim())) &&
+                  !form.apiKey.trim()) ||
                 !form.model.trim() ||
                 isSubmitting
               }

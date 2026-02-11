@@ -32,7 +32,8 @@ export class AnthropicAdapter implements AIAdapter {
         messages: conversationMessages.map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content
-        }))
+        })),
+        ...(config.temperature !== undefined ? { temperature: config.temperature } : {})
       })
 
       for await (const event of stream) {
